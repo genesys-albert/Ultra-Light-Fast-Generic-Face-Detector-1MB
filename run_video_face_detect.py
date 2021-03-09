@@ -2,10 +2,21 @@
 This code uses the pytorch model to detect faces from live video or camera.
 """
 import argparse
-import sys
+import sys, os
 import cv2
+import importlib.util
+import numpy as np
 
 from vision.ssd.config.fd_config import define_img_size
+
+def module_from_file(module_name, file_path):
+  file_path = os.path.abspath(file_path)
+  spec = importlib.util.spec_from_file_location(module_name, file_path)
+  module = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(module)
+  return module
+
+srb = module_from_file("sharedringbuf", "dshow/lib/sharedringbuf.py")
 
 parser = argparse.ArgumentParser(
     description='detect_video')
@@ -20,9 +31,9 @@ parser.add_argument('--candidate_size', default=1000, type=int,
                     help='nms candidate size')
 parser.add_argument('--path', default="imgs", type=str,
                     help='imgs dir')
-parser.add_argument('--test_device', default="cuda:0", type=str,
+parser.add_argument('--test_device', default="cpu", type=str,
                     help='cuda:0 or cpu')
-parser.add_argument('--video_path', default="/home/linzai/Videos/video/16_1.MP4", type=str,
+parser.add_argument('--video_path', default="0", type=str,
                     help='path of video')
 args = parser.parse_args()
 
@@ -37,8 +48,9 @@ label_path = "./models/voc-model-labels.txt"
 
 net_type = args.net_type
 
-cap = cv2.VideoCapture(args.video_path)  # capture from video
-# cap = cv2.VideoCapture(0)  # capture from camera
+#cap = cv2.VideoCapture(args.video_path)  # capture from video
+cap = cv2.VideoCapture(0)  # capture from camera
+cap.set(cv2.CAP_PROP_CONVERT_RGB, 0) # keep YUV format
 
 class_names = [name.strip() for name in open(label_path).readlines()]
 num_classes = len(class_names)
@@ -64,12 +76,20 @@ net.load(model_path)
 
 timer = Timer()
 sum = 0
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+# create the shared-ring-buffer.
+frame_size = 1920 * 1080 * 2
+srb_buf = srb.create('GL3004SharedBuffer', frame_size, 5)
 while True:
     ret, orig_image = cap.read()
     if orig_image is None:
         print("end")
         break
-    image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2RGB)
+
+    channel = np.prod(orig_image.shape) // (height * width)
+    orig_image = np.reshape(orig_image, [height, width, channel])
+    image = cv2.cvtColor(orig_image, cv2.COLOR_YUV2RGB_YUYV)
     timer.start()
     boxes, labels, probs = predictor.predict(image, candidate_size / 2, threshold)
     interval = timer.end()
@@ -85,10 +105,13 @@ while True:
         #             0.5,  # font scale
         #             (0, 0, 255),
         #             2)  # line type
-    orig_image = cv2.resize(orig_image, None, None, fx=0.8, fy=0.8)
+
+    srb_buf.write(orig_image.tobytes(), frame_size)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    image = cv2.resize(image, None, None, fx=0.3, fy=0.3)
     sum += boxes.size(0)
-    cv2.imshow('annotated', orig_image)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv2.imshow('annotated', image)
+    if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
         break
 cap.release()
 cv2.destroyAllWindows()
