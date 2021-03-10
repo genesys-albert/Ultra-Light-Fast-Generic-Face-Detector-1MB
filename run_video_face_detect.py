@@ -89,7 +89,8 @@ height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 # create the shared-ring-buffer.
 frame_size = 1920 * 1080 * 2
 srb_buf = srb.create('GL3004SharedBuffer', frame_size, 5)
-while True:
+close_window = False
+while not close_window:
     ret, orig_image = cap.read()
     if orig_image is None:
         print("end")
@@ -118,9 +119,11 @@ while True:
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     image = cv2.resize(image, None, None, fx=0.3, fy=0.3)
     sum += boxes.size(0)
-    cv2.imshow('annotated', image)
+    cv2.imshow('preview', image)
     if cv2.waitKey(1) & 0xFF in [ord('q'), ord('Q')]:
         break
+    if cv2.getWindowProperty('preview', cv2.WND_PROP_VISIBLE) < 1:
+        close_window = True
 cap.release()
 cv2.destroyAllWindows()
 print("all face num:{}".format(sum))
