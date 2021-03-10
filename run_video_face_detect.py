@@ -48,8 +48,16 @@ label_path = "./models/voc-model-labels.txt"
 
 net_type = args.net_type
 
+device_id = 0
+if os.path.isfile('camera.txt'):
+  with open('camera.txt', 'r') as txt:
+    line = txt.readline()
+    if type(line) == str:
+      if line.isnumeric():
+        device_id = int(line)
+
 #cap = cv2.VideoCapture(args.video_path)  # capture from video
-cap = cv2.VideoCapture(0)  # capture from camera
+cap = cv2.VideoCapture(device_id)  # capture from camera
 cap.set(cv2.CAP_PROP_CONVERT_RGB, 0) # keep YUV format
 
 class_names = [name.strip() for name in open(label_path).readlines()]
